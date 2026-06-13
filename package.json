@@ -1,0 +1,16 @@
+{
+  "name": "music-api",
+  "version": "1.0.0",
+  "description": "API leve para extrair áudio e informações do YouTube, usando yt-dlp como backend",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5"
+  }
+}

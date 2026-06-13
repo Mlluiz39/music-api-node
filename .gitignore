@@ -1,0 +1,45 @@
+node_modules/
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cache e diretórios temporários
+.npm/
+.cache/
+.tmp/
+tmp/
+temp/
+
+# Build e cobertura de testes
+dist/
+build/
+coverage/
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Configurações locais de IDE/editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Docker/local runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Cookies e arquivos sensíveis locais
+cookies.txt
+
