@@ -178,7 +178,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       if (validationError) return res.status(400).json({ error: validationError })
 
       const q = normalizeQueryParam(req.query.q)
-      const args = addCookiesArg([`ytsearch10:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
+      const args = addCookiesArg([`ytsearch20:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
       const data = await runYtDlp(args)
 
       res.json({ results: data.map(normalizeVideoResult) })
