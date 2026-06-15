@@ -114,11 +114,25 @@ function findBestAudioFormat(formats = []) {
 
 export function createYtDlpRunner(config = getConfig()) {
   return async function runYtDlp(args) {
-    const { stdout, stderr } = await execFileAsync(config.ytdlpPath, args, {
-      env: { ...env },
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: config.ytdlpTimeoutMs,
-    })
+    let stdout = ''
+    let stderr = ''
+    try {
+      const result = await execFileAsync(config.ytdlpPath, args, {
+        env: { ...env },
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: config.ytdlpTimeoutMs,
+      })
+      stdout = result.stdout
+      stderr = result.stderr
+    } catch (err) {
+      // yt-dlp sometimes exits non-zero with warnings but still has valid stdout
+      if (err.stdout) {
+        stdout = err.stdout
+        stderr = err.stderr || ''
+      } else {
+        throw err
+      }
+    }
 
     const lines = stdout.trim().split('\n').filter(Boolean)
     const results = lines
