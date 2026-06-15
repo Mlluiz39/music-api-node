@@ -3,6 +3,10 @@ import assert from 'node:assert/strict'
 import { createApp, isAllowedStreamUrl, isAllowedYouTubeUrl } from '../src/app.js'
 
 function createTestServer(runYtDlp) {
+  return createTestServerWithConfig(runYtDlp)
+}
+
+function createTestServerWithConfig(runYtDlp, configOverrides = {}) {
   const app = createApp({
     config: {
       allowedOrigins: ['*'],
@@ -10,6 +14,8 @@ function createTestServer(runYtDlp) {
       cookiesPath: '/tmp/cookies.txt',
       ytdlpPath: 'yt-dlp',
       ytdlpTimeoutMs: 30_000,
+      audioYtdlpTimeoutMs: 90_000,
+      ...configOverrides,
     },
     runYtDlp,
   })
@@ -63,6 +69,19 @@ test('GET /api/search valida q obrigatório', async () => {
   }
 })
 
+test('GET /api/search valida tamanho máximo da busca', async () => {
+  const server = createTestServer(async () => [])
+  const query = 'a'.repeat(201)
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/search?q=${query}`)
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), { error: 'q deve ter no máximo 200 caracteres' })
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/search normaliza resultados', async () => {
   const server = createTestServer(async args => {
     assert.deepEqual(args, ['ytsearch20:test', '-j', '--flat-playlist', '--no-warnings', '--socket-timeout', '30'])
@@ -94,6 +113,31 @@ test('GET /api/search normaliza resultados', async () => {
   }
 })
 
+test('GET /api/search usa cache para a mesma busca', async () => {
+  let calls = 0
+  const server = createTestServer(async () => {
+    calls += 1
+    return [{
+      id: 'cached',
+      title: 'Cache teste',
+      thumbnails: [],
+    }]
+  })
+
+  try {
+    const first = await fetch(`${server.baseUrl}/api/search?q=cache-user-flow`)
+    const second = await fetch(`${server.baseUrl}/api/search?q=cache-user-flow`)
+
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(first.headers.get('x-cache'), 'MISS')
+    assert.equal(second.headers.get('x-cache'), 'HIT')
+    assert.equal(calls, 1)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/audio rejeita URL não permitida', async () => {
   const server = createTestServer(async () => [])
 
@@ -101,6 +145,43 @@ test('GET /api/audio rejeita URL não permitida', async () => {
     const response = await fetch(`${server.baseUrl}/api/audio?url=https://example.com/video`)
     assert.equal(response.status, 400)
     assert.deepEqual(await response.json(), { error: 'url inválida ou não permitida' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/audio força vídeo único mesmo com URL de playlist', async () => {
+  const playlistVideoUrl = 'https://www.youtube.com/watch?v=selected&list=PL123&index=2'
+  const server = createTestServer(async args => {
+    assert.deepEqual(args, [
+      playlistVideoUrl,
+      '-j',
+      '--no-playlist',
+      '--no-warnings',
+      '--socket-timeout',
+      '30',
+      '--retries',
+      '2',
+    ])
+
+    return [{
+      title: 'Selecionada',
+      formats: [
+        { acodec: 'opus', vcodec: 'none', abr: 128, url: 'selected-audio' },
+      ],
+    }]
+  })
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/audio?url=${encodeURIComponent(playlistVideoUrl)}`)
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), {
+      title: 'Selecionada',
+      channel: '',
+      duration: 0,
+      thumbnail: '',
+      streamUrl: 'selected-audio',
+    })
   } finally {
     await server.close()
   }
@@ -147,6 +228,33 @@ test('GET /api/audio retorna melhor stream de áudio', async () => {
   }
 })
 
+test('GET /api/audio usa cache para a mesma URL', async () => {
+  let calls = 0
+  const url = 'https://www.youtube.com/watch?v=cacheaudio'
+  const server = createTestServer(async () => {
+    calls += 1
+    return [{
+      title: 'Audio cache',
+      formats: [
+        { acodec: 'opus', vcodec: 'none', abr: 128, url: 'cached-audio' },
+      ],
+    }]
+  })
+
+  try {
+    const first = await fetch(`${server.baseUrl}/api/audio?url=${encodeURIComponent(url)}`)
+    const second = await fetch(`${server.baseUrl}/api/audio?url=${encodeURIComponent(url)}`)
+
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(first.headers.get('x-cache'), 'MISS')
+    assert.equal(second.headers.get('x-cache'), 'HIT')
+    assert.equal(calls, 1)
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/playlist retorna URLs de vídeo por id', async () => {
   const server = createTestServer(async args => {
     assert.deepEqual(args, [
@@ -186,6 +294,18 @@ test('GET /api/playlist retorna URLs de vídeo por id', async () => {
   }
 })
 
+test('GET /api/playlist rejeita URL não permitida', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/playlist?url=https://example.com/playlist`)
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), { error: 'url inválida ou não permitida' })
+  } finally {
+    await server.close()
+  }
+})
+
 test('GET /api/audio retorna 404 quando não há formato de áudio', async () => {
   const server = createTestServer(async () => [{
     title: 'Sem áudio',
@@ -199,6 +319,59 @@ test('GET /api/audio retorna 404 quando não há formato de áudio', async () =>
     const response = await fetch(`${server.baseUrl}/api/audio?url=https://www.youtube.com/watch?v=noaudio`)
     assert.equal(response.status, 404)
     assert.deepEqual(await response.json(), { error: 'nenhum formato de áudio' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/stream valida url obrigatória', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/stream`)
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), { error: 'url obrigatória' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/stream valida url inválida', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/stream?url=not-a-url`)
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), { error: 'url inválida' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/stream bloqueia host não permitido', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/stream?url=https://example.com/audio.webm`)
+    assert.equal(response.status, 403)
+    assert.deepEqual(await response.json(), { error: 'host não permitido' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('bloqueia origem CORS não permitida', async () => {
+  const server = createTestServerWithConfig(async () => [], {
+    allowedOrigins: ['https://app.example.com'],
+  })
+
+  try {
+    const response = await fetch(`${server.baseUrl}/health`, {
+      headers: { Origin: 'https://evil.example.com' },
+    })
+
+    assert.equal(response.status, 403)
+    assert.deepEqual(await response.json(), { error: 'origem não permitida pelo CORS' })
   } finally {
     await server.close()
   }
