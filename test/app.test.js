@@ -56,7 +56,7 @@ test('GET /api/search valida q obrigatório', async () => {
 
 test('GET /api/search normaliza resultados', async () => {
   const server = createTestServer(async args => {
-    assert.deepEqual(args, ['ytsearch20:test', '-j', '--flat-playlist', '--no-warnings'])
+    assert.deepEqual(args, ['ytsearch20:test', '-j', '--flat-playlist', '--no-warnings', '--socket-timeout', '30'])
     return [{
       id: 'abc123',
       title: 'Vídeo teste',

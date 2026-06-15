@@ -14,6 +14,7 @@ export const DEFAULT_PORT = 8081
 const DEFAULT_YTDLP_PATH = 'yt-dlp'
 const DEFAULT_COOKIES_PATH = '/opt/music-api/cookies.txt'
 const DEFAULT_YTDLP_TIMEOUT_MS = 45_000
+const DEFAULT_AUDIO_YTDLP_TIMEOUT_MS = 90_000  // áudio demora mais para resolver formatos
 const MAX_QUERY_LENGTH = 200
 const MAX_URL_LENGTH = 2_048
 
@@ -81,6 +82,7 @@ export function getConfig(environment = env) {
     cookiesPath,
     hasCookies: existsSync(cookiesPath),
     ytdlpTimeoutMs: Number(environment.YTDLP_TIMEOUT_MS || DEFAULT_YTDLP_TIMEOUT_MS),
+    audioYtdlpTimeoutMs: Number(environment.AUDIO_YTDLP_TIMEOUT_MS || DEFAULT_AUDIO_YTDLP_TIMEOUT_MS),
   }
 }
 
@@ -156,14 +158,14 @@ function findBestAudioFormat(formats = []) {
 }
 
 export function createYtDlpRunner(config = getConfig()) {
-  return async function runYtDlp(args) {
+  return async function runYtDlp(args, { timeoutMs } = {}) {
     let stdout = ''
     let stderr = ''
     try {
       const result = await execFileAsync(config.ytdlpPath, args, {
         env: { ...env },
         maxBuffer: 10 * 1024 * 1024,
-        timeout: config.ytdlpTimeoutMs,
+        timeout: timeoutMs ?? config.ytdlpTimeoutMs,
       })
       stdout = result.stdout
       stderr = result.stderr
@@ -228,7 +230,10 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
         return res.json({ results: cached })
       }
 
-      const args = addCookiesArg([`ytsearch20:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
+      const args = addCookiesArg(
+        [`ytsearch20:${q}`, '-j', '--flat-playlist', '--no-warnings', '--socket-timeout', '30'],
+        config,
+      )
       const data = await runYtDlp(args)
       const results = data.map(normalizeVideoResult)
 
@@ -254,8 +259,14 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
         return res.json(cached)
       }
 
-      const args = addCookiesArg([url, '-j', '-f', 'bestaudio/best', '--no-warnings'], config)
-      const data = await runYtDlp(args)
+      // Sem -f: findBestAudioFormat faz a seleção localmente a partir do JSON completo.
+      // Isso evita que o yt-dlp precise resolver o seletor de formato no servidor,
+      // reduzindo o tempo de resposta e o risco de timeout.
+      const args = addCookiesArg(
+        [url, '-j', '--no-warnings', '--socket-timeout', '30', '--retries', '2'],
+        config,
+      )
+      const data = await runYtDlp(args, { timeoutMs: config.audioYtdlpTimeoutMs })
       if (data.length === 0) return res.status(404).json({ error: 'nenhum resultado' })
 
       const info = data[0]
