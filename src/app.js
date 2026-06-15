@@ -3,6 +3,8 @@ import express from 'express'
 import cors from 'cors'
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { get as httpsGet } from 'node:https'
+import { get as httpGet } from 'node:http'
 import { env } from 'node:process'
 import { promisify } from 'node:util'
 
@@ -192,6 +194,69 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
         thumbnail: getBestThumbnail(info.thumbnails || []),
         streamUrl: bestAudio?.url || '',
       })
+    } catch (err) {
+      handleInternalError(res, err)
+    }
+  })
+
+  app.get('/api/stream', async (req, res) => {
+    try {
+      const streamUrl = normalizeQueryParam(req.query.url)
+      if (!streamUrl) return res.status(400).json({ error: 'url obrigatória' })
+
+      let parsedUrl
+      try {
+        parsedUrl = new URL(streamUrl)
+      } catch {
+        return res.status(400).json({ error: 'url inválida' })
+      }
+
+      const allowedHosts = ['googlevideo.com', 'ytimg.com', 'youtube.com']
+      if (!allowedHosts.some(h => parsedUrl.hostname.endsWith(h))) {
+        return res.status(403).json({ error: 'host não permitido' })
+      }
+
+      function proxyRequest(url, redirectCount = 0) {
+        if (redirectCount > 5) {
+          if (!res.headersSent) res.status(502).json({ error: 'muitos redirects' })
+          return
+        }
+
+        const parsed = new URL(url)
+        const getFn = parsed.protocol === 'https:' ? httpsGet : httpGet
+
+        const headers = { 'User-Agent': 'Mozilla/5.0' }
+        const range = req.headers.range
+        if (range) headers['Range'] = range
+
+        const proxyReq = getFn(url, { headers }, (proxyRes) => {
+          if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+            const next = new URL(proxyRes.headers.location, url).href
+            proxyRequest(next, redirectCount + 1)
+            return
+          }
+
+          const resHeaders = {
+            'Content-Type': proxyRes.headers['content-type'] || 'audio/webm',
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+          }
+          if (proxyRes.headers['content-length']) resHeaders['Content-Length'] = proxyRes.headers['content-length']
+          if (proxyRes.headers['content-range']) resHeaders['Content-Range'] = proxyRes.headers['content-range']
+
+          res.writeHead(proxyRes.statusCode, resHeaders)
+          proxyRes.pipe(res)
+        })
+
+        proxyReq.on('error', (err) => {
+          console.error('Stream proxy error:', err.message)
+          if (!res.headersSent) res.status(502).json({ error: 'falha ao buscar stream' })
+        })
+      }
+
+      proxyRequest(streamUrl)
     } catch (err) {
       handleInternalError(res, err)
     }
