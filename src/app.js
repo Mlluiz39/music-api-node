@@ -320,6 +320,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
 
         const proxyReq = getFn(url, { headers }, (proxyRes) => {
           if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+            proxyRes.destroy()
             const next = new URL(proxyRes.headers.location, url).href
             proxyRequest(next, redirectCount + 1)
             return
@@ -330,6 +331,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
             'Accept-Ranges': 'bytes',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+            'Cache-Control': 'no-cache', // Evita cache parcial no navegador que causa cancelamentos
           }
           if (proxyRes.headers['content-length']) resHeaders['Content-Length'] = proxyRes.headers['content-length']
           if (proxyRes.headers['content-range']) resHeaders['Content-Range'] = proxyRes.headers['content-range']
@@ -338,14 +340,24 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
           proxyRes.pipe(res)
 
           // Cleanup on client disconnect
-          req.on('close', () => {
+          const onClientClose = () => {
+            proxyReq.destroy()
             proxyRes.destroy()
-          })
+          }
+          req.on('close', onClientClose)
+          
+          proxyRes.on('end', () => req.removeListener('close', onClientClose))
         })
 
-        proxyReq.setTimeout(15000, () => {
-          proxyReq.destroy()
-          if (!res.headersSent) res.status(504).json({ error: 'timeout ao buscar stream' })
+        // Apenas timeout de conexão (antes de receber os headers), não de inatividade da stream
+        proxyReq.on('socket', (socket) => {
+          socket.setTimeout(10000)
+          socket.on('timeout', () => {
+            if (!res.headersSent) {
+              proxyReq.destroy()
+              res.status(504).json({ error: 'timeout ao conectar na stream' })
+            }
+          })
         })
 
         proxyReq.on('error', (err) => {
