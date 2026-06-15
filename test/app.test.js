@@ -107,17 +107,30 @@ test('GET /api/audio rejeita URL não permitida', async () => {
 })
 
 test('GET /api/audio retorna melhor stream de áudio', async () => {
-  const server = createTestServer(async () => [{
-    title: 'Música teste',
-    channel: 'Canal',
-    duration: 200,
-    thumbnails: [{ url: 'thumb' }],
-    formats: [
-      { acodec: 'none', vcodec: 'avc1', abr: 0, url: 'video' },
-      { acodec: 'opus', vcodec: 'none', abr: 70, url: 'audio-low' },
-      { acodec: 'opus', vcodec: 'none', abr: 160, url: 'audio-high' },
-    ],
-  }])
+  const server = createTestServer(async args => {
+    assert.deepEqual(args, [
+      'https://www.youtube.com/watch?v=abc',
+      '-j',
+      '--no-playlist',
+      '--no-warnings',
+      '--socket-timeout',
+      '30',
+      '--retries',
+      '2',
+    ])
+
+    return [{
+      title: 'Música teste',
+      channel: 'Canal',
+      duration: 200,
+      thumbnails: [{ url: 'thumb' }],
+      formats: [
+        { acodec: 'none', vcodec: 'avc1', abr: 0, url: 'video' },
+        { acodec: 'opus', vcodec: 'none', abr: 70, url: 'audio-low' },
+        { acodec: 'opus', vcodec: 'none', abr: 160, url: 'audio-high' },
+      ],
+    }]
+  })
 
   try {
     const response = await fetch(`${server.baseUrl}/api/audio?url=https://www.youtube.com/watch?v=abc`)
@@ -128,6 +141,45 @@ test('GET /api/audio retorna melhor stream de áudio', async () => {
       duration: 200,
       thumbnail: 'thumb',
       streamUrl: 'audio-high',
+    })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/playlist retorna URLs de vídeo por id', async () => {
+  const server = createTestServer(async args => {
+    assert.deepEqual(args, [
+      'https://www.youtube.com/playlist?list=PL123',
+      '-j',
+      '--flat-playlist',
+      '--no-warnings',
+    ])
+
+    return [
+      { id: 'first', title: 'Primeira', url: 'first' },
+      { id: 'last', title: 'Última', url: 'last' },
+    ]
+  })
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/playlist?url=https://www.youtube.com/playlist?list=PL123`)
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), {
+      items: [
+        {
+          id: 'first',
+          title: 'Primeira',
+          url: 'https://www.youtube.com/watch?v=first',
+          duration: 0,
+        },
+        {
+          id: 'last',
+          title: 'Última',
+          url: 'https://www.youtube.com/watch?v=last',
+          duration: 0,
+        },
+      ],
     })
   } finally {
     await server.close()

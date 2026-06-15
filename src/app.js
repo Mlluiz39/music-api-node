@@ -169,6 +169,12 @@ function normalizeVideoResult(video) {
   }
 }
 
+function getVideoWatchUrl(video) {
+  if (video.webpage_url) return video.webpage_url
+  if (video.id) return `https://www.youtube.com/watch?v=${video.id}`
+  return normalizeQueryParam(video.url)
+}
+
 function findBestAudioFormat(formats = []) {
   return formats.reduce((best, format) => {
     if (format.acodec === 'none' || (format.vcodec && format.vcodec !== 'none')) return best
@@ -286,7 +292,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       // Isso evita que o yt-dlp precise resolver o seletor de formato no servidor,
       // reduzindo o tempo de resposta e o risco de timeout.
       const args = addCookiesArg(
-        [url, '-j', '--no-warnings', '--socket-timeout', '30', '--retries', '2'],
+        [url, '-j', '--no-playlist', '--no-warnings', '--socket-timeout', '30', '--retries', '2'],
         config,
       )
       const data = await runYtDlp(args, { timeoutMs: config.audioYtdlpTimeoutMs })
@@ -413,7 +419,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       const items = data.map(video => ({
         id: String(video.id),
         title: String(video.title || ''),
-        url: video.url || `https://www.youtube.com/watch?v=${video.id}`,
+        url: getVideoWatchUrl(video),
         duration: video.duration || 0,
       }))
 
