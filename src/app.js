@@ -239,7 +239,6 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
           const resHeaders = {
             'Content-Type': proxyRes.headers['content-type'] || 'audio/webm',
             'Accept-Ranges': 'bytes',
-            'Cache-Control': 'public, max-age=3600',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
           }
@@ -248,10 +247,22 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
 
           res.writeHead(proxyRes.statusCode, resHeaders)
           proxyRes.pipe(res)
+
+          // Cleanup on client disconnect
+          req.on('close', () => {
+            proxyRes.destroy()
+          })
+        })
+
+        proxyReq.setTimeout(15000, () => {
+          proxyReq.destroy()
+          if (!res.headersSent) res.status(504).json({ error: 'timeout ao buscar stream' })
         })
 
         proxyReq.on('error', (err) => {
-          console.error('Stream proxy error:', err.message)
+          if (err.code !== 'ECONNRESET') {
+            console.error('Stream proxy error:', err.message)
+          }
           if (!res.headersSent) res.status(502).json({ error: 'falha ao buscar stream' })
         })
       }
