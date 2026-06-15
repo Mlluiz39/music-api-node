@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile)
 export const DEFAULT_PORT = 8081
 const DEFAULT_YTDLP_PATH = 'yt-dlp'
 const DEFAULT_COOKIES_PATH = '/opt/music-api/cookies.txt'
-const DEFAULT_YTDLP_TIMEOUT_MS = 30_000
+const DEFAULT_YTDLP_TIMEOUT_MS = 45_000
 const MAX_QUERY_LENGTH = 200
 const MAX_URL_LENGTH = 2_048
 
@@ -178,7 +178,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       if (validationError) return res.status(400).json({ error: validationError })
 
       const q = normalizeQueryParam(req.query.q)
-      const args = addCookiesArg([`ytsearch20:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
+      const args = addCookiesArg([`ytsearch10:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
       const data = await runYtDlp(args)
 
       res.json({ results: data.map(normalizeVideoResult) })
