@@ -17,6 +17,49 @@ const DEFAULT_YTDLP_TIMEOUT_MS = 45_000
 const MAX_QUERY_LENGTH = 200
 const MAX_URL_LENGTH = 2_048
 
+// ---------------------------------------------------------------------------
+// TTL Cache — evita chamar yt-dlp repetidamente para a mesma query / URL
+// ---------------------------------------------------------------------------
+class TtlCache {
+  #store = new Map()
+
+  /** @param {number} defaultTtlMs tempo de vida padrão em ms */
+  constructor(defaultTtlMs) {
+    this.defaultTtlMs = defaultTtlMs
+  }
+
+  get(key) {
+    const entry = this.#store.get(key)
+    if (!entry) return undefined
+    if (Date.now() > entry.expiresAt) {
+      this.#store.delete(key)
+      return undefined
+    }
+    return entry.value
+  }
+
+  set(key, value, ttlMs = this.defaultTtlMs) {
+    this.#store.set(key, { value, expiresAt: Date.now() + ttlMs })
+  }
+
+  /** Remove entradas expiradas (pode ser chamado periodicamente) */
+  purge() {
+    const now = Date.now()
+    for (const [k, v] of this.#store) {
+      if (now > v.expiresAt) this.#store.delete(k)
+    }
+  }
+}
+
+const SEARCH_TTL_MS = 5 * 60 * 1000   // 5 minutos
+const AUDIO_TTL_MS  = 3 * 60 * 1000   // 3 minutos (URLs do YouTube expiram)
+
+const searchCache = new TtlCache(SEARCH_TTL_MS)
+const audioCache  = new TtlCache(AUDIO_TTL_MS)
+
+// Limpa entradas expiradas a cada 10 minutos para não acumular memória
+setInterval(() => { searchCache.purge(); audioCache.purge() }, 10 * 60 * 1000).unref()
+
 const ALLOWED_YOUTUBE_HOSTS = new Set([
   'youtube.com',
   'www.youtube.com',
@@ -178,10 +221,20 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       if (validationError) return res.status(400).json({ error: validationError })
 
       const q = normalizeQueryParam(req.query.q)
+
+      const cached = searchCache.get(q)
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT')
+        return res.json({ results: cached })
+      }
+
       const args = addCookiesArg([`ytsearch20:${q}`, '-j', '--flat-playlist', '--no-warnings'], config)
       const data = await runYtDlp(args)
+      const results = data.map(normalizeVideoResult)
 
-      res.json({ results: data.map(normalizeVideoResult) })
+      searchCache.set(q, results)
+      res.setHeader('X-Cache', 'MISS')
+      res.json({ results })
     } catch (err) {
       handleInternalError(res, err)
     }
@@ -194,6 +247,13 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       }
 
       const url = normalizeQueryParam(req.query.url)
+
+      const cached = audioCache.get(url)
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT')
+        return res.json(cached)
+      }
+
       const args = addCookiesArg([url, '-j', '-f', 'bestaudio/best', '--no-warnings'], config)
       const data = await runYtDlp(args)
       if (data.length === 0) return res.status(404).json({ error: 'nenhum resultado' })
@@ -201,13 +261,17 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       const info = data[0]
       const bestAudio = findBestAudioFormat(info.formats || [])
 
-      res.json({
+      const payload = {
         title: String(info.title || ''),
         channel: String(info.channel || ''),
         duration: info.duration || 0,
         thumbnail: getBestThumbnail(info.thumbnails || []),
         streamUrl: bestAudio?.url || '',
-      })
+      }
+
+      audioCache.set(url, payload)
+      res.setHeader('X-Cache', 'MISS')
+      res.json(payload)
     } catch (err) {
       handleInternalError(res, err)
     }
