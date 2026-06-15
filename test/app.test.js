@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createApp, isAllowedYouTubeUrl } from '../src/app.js'
+import { createApp, isAllowedStreamUrl, isAllowedYouTubeUrl } from '../src/app.js'
 
 function createTestServer(runYtDlp) {
   const app = createApp({
@@ -28,6 +28,15 @@ test('valida URLs permitidas do YouTube', () => {
   assert.equal(isAllowedYouTubeUrl('https://youtu.be/abc'), true)
   assert.equal(isAllowedYouTubeUrl('https://example.com/video'), false)
   assert.equal(isAllowedYouTubeUrl('file:///tmp/test'), false)
+})
+
+test('valida URLs permitidas para proxy de stream', () => {
+  assert.equal(isAllowedStreamUrl('https://rr1---sn.googlevideo.com/videoplayback?id=abc'), true)
+  assert.equal(isAllowedStreamUrl('https://i.ytimg.com/vi/abc/default.jpg'), true)
+  assert.equal(isAllowedStreamUrl('https://www.youtube.com/watch?v=abc'), true)
+  assert.equal(isAllowedStreamUrl('https://evilgooglevideo.com/videoplayback'), false)
+  assert.equal(isAllowedStreamUrl('https://youtube.com.evil.test/watch?v=abc'), false)
+  assert.equal(isAllowedStreamUrl('ftp://rr1---sn.googlevideo.com/videoplayback'), false)
 })
 
 test('GET /health retorna status ok', async () => {
@@ -120,6 +129,24 @@ test('GET /api/audio retorna melhor stream de áudio', async () => {
       thumbnail: 'thumb',
       streamUrl: 'audio-high',
     })
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET /api/audio retorna 404 quando não há formato de áudio', async () => {
+  const server = createTestServer(async () => [{
+    title: 'Sem áudio',
+    formats: [
+      { acodec: 'none', vcodec: 'avc1', abr: 0, url: 'video' },
+      { acodec: 'none', vcodec: 'none', abr: 0 },
+    ],
+  }])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/audio?url=https://www.youtube.com/watch?v=noaudio`)
+    assert.equal(response.status, 404)
+    assert.deepEqual(await response.json(), { error: 'nenhum formato de áudio' })
   } finally {
     await server.close()
   }

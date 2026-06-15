@@ -69,6 +69,12 @@ const ALLOWED_YOUTUBE_HOSTS = new Set([
   'youtu.be',
 ])
 
+const ALLOWED_STREAM_HOSTS = [
+  'googlevideo.com',
+  'ytimg.com',
+  'youtube.com',
+]
+
 export function getConfig(environment = env) {
   const cookiesPath = environment.COOKIES_PATH || DEFAULT_COOKIES_PATH
 
@@ -121,6 +127,23 @@ export function isAllowedYouTubeUrl(value) {
   try {
     const url = new URL(normalized)
     return ['http:', 'https:'].includes(url.protocol) && ALLOWED_YOUTUBE_HOSTS.has(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export function isAllowedStreamUrl(value) {
+  const normalized = normalizeQueryParam(value)
+
+  if (!normalized || normalized.length > MAX_URL_LENGTH) return false
+
+  try {
+    const url = new URL(normalized)
+    if (!['http:', 'https:'].includes(url.protocol)) return false
+
+    return ALLOWED_STREAM_HOSTS.some(host => (
+      url.hostname === host || url.hostname.endsWith(`.${host}`)
+    ))
   } catch {
     return false
   }
@@ -271,6 +294,7 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
 
       const info = data[0]
       const bestAudio = findBestAudioFormat(info.formats || [])
+      if (!bestAudio?.url) return res.status(404).json({ error: 'nenhum formato de áudio' })
 
       const payload = {
         title: String(info.title || ''),
@@ -293,19 +317,22 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
       const streamUrl = normalizeQueryParam(req.query.url)
       if (!streamUrl) return res.status(400).json({ error: 'url obrigatória' })
 
-      let parsedUrl
       try {
-        parsedUrl = new URL(streamUrl)
+        new URL(streamUrl)
       } catch {
         return res.status(400).json({ error: 'url inválida' })
       }
 
-      const allowedHosts = ['googlevideo.com', 'ytimg.com', 'youtube.com']
-      if (!allowedHosts.some(h => parsedUrl.hostname.endsWith(h))) {
+      if (!isAllowedStreamUrl(streamUrl)) {
         return res.status(403).json({ error: 'host não permitido' })
       }
 
       function proxyRequest(url, redirectCount = 0) {
+        if (!isAllowedStreamUrl(url)) {
+          if (!res.headersSent) res.status(403).json({ error: 'host não permitido' })
+          return
+        }
+
         if (redirectCount > 5) {
           if (!res.headersSent) res.status(502).json({ error: 'muitos redirects' })
           return

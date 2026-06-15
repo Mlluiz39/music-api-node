@@ -14,13 +14,13 @@ API leve para extrair áudio e informações do YouTube, feita em **Node.js**. U
 
 ```bash
 # Buscar
-curl "http://localhost:3000/api/search?q=mc+torugo"
+curl "http://localhost:8081/api/search?q=mc+torugo"
 
 # Pegar stream de áudio
-curl "http://localhost:3000/api/audio?url=https://www.youtube.com/watch?v=Y50HSJQuwNU"
+curl "http://localhost:8081/api/audio?url=https://www.youtube.com/watch?v=Y50HSJQuwNU"
 
 # Listar playlist
-curl "http://localhost:3000/api/playlist?url=https://www.youtube.com/playlist?list=..."
+curl "http://localhost:8081/api/playlist?url=https://www.youtube.com/playlist?list=..."
 ```
 
 ## Requisitos
@@ -52,7 +52,7 @@ cp .env.example .env  # edite se necessário
 npm start
 ```
 
-Servidor sobe em `http://0.0.0.0:3000`.
+Servidor sobe em `http://0.0.0.0:8081`.
 
 ---
 
@@ -61,7 +61,7 @@ Servidor sobe em `http://0.0.0.0:3000`.
 ### 1. Provisionar VPS
 
 - SO: Ubuntu 22.04 ou superior
-- Portas abertas no firewall: **22** (SSH), **3000** (API)
+- Portas abertas no firewall: **22** (SSH), **8081** (API)
 - Se usar Cloudflare Tunnel ou proxy reverso, abrir apenas 22 e 443
 
 ### 2. Instalar Node.js
@@ -87,14 +87,14 @@ yt-dlp --version
 
 ```bash
 # ufw
-sudo ufw allow 3000/tcp
+sudo ufw allow 8081/tcp
 sudo ufw reload
 
 # Se usa iptables direto:
-# sudo iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
+# sudo iptables -A INPUT -p tcp --dport 8081 -j ACCEPT
 ```
 
-Se estiver atrás de Cloudflare/nginx, **não** exponha a 3000 — configure proxy reverso.
+Se estiver atrás de Cloudflare/nginx, **não** exponha a 8081 — configure proxy reverso.
 
 ### 5. Criar usuário e diretório da aplicação
 
@@ -108,7 +108,7 @@ sudo chown music-api:music-api /opt/music-api
 
 ```bash
 sudo tee /opt/music-api/.env <<EOF
-PORT=8080
+PORT=8081
 ALLOWED_ORIGINS=*
 YTDLP_PATH=yt-dlp
 EOF
@@ -128,7 +128,7 @@ Type=simple
 User=music-api
 Group=music-api
 WorkingDirectory=/opt/music-api
-ExecStart=/usr/bin/node /opt/music-api/src/app.js
+ExecStart=/usr/bin/node /opt/music-api/src/server.js
 Restart=always
 RestartSec=5
 EnvironmentFile=/opt/music-api/.env
@@ -167,8 +167,8 @@ Para evitar bloqueios (403/restrição de idade):
 ### 10. Verificar que tudo funciona
 
 ```bash
-curl "http://seu-ip:3000/api/search?q=test"
-curl "http://seu-ip:3000/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
+curl "http://seu-ip:8081/api/search?q=test"
+curl "http://seu-ip:8081/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 ---
@@ -177,7 +177,7 @@ curl "http://seu-ip:3000/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
 
 | Variável | Padrão | Descrição |
 |----------|--------|-----------|
-| `PORT` | `3000` | Porta do servidor |
+| `PORT` | `8081` | Porta do servidor |
 | `ALLOWED_ORIGINS` | `*` | Origens CORS permitidas (separadas por vírgula) |
 | `YTDLP_PATH` | `yt-dlp` | Caminho do binário yt-dlp |
 | `COOKIES_PATH` | `/opt/music-api/cookies.txt` | Caminho do arquivo de cookies |
@@ -189,7 +189,8 @@ curl "http://seu-ip:3000/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 music-api/
 ├── src/
-│   └── app.js          # Servidor Express, handlers, chamada ao yt-dlp
+│   ├── app.js          # App Express, handlers, chamada ao yt-dlp
+│   └── server.js       # Inicialização do servidor HTTP
 ├── deploy.sh           # Script de deploy: rsync → npm install → systemd restart
 ├── package.json
 ├── .env                 # Variáveis de ambiente (não versionado)
