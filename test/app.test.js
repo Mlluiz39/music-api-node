@@ -167,7 +167,8 @@ test('GET /api/audio força vídeo único mesmo com URL de playlist', async () =
     return [{
       title: 'Selecionada',
       formats: [
-        { acodec: 'opus', vcodec: 'none', abr: 128, url: 'selected-audio' },
+        { acodec: 'opus', ext: 'webm', vcodec: 'none', abr: 128, url: 'webm-audio' },
+        { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 96, url: 'selected-audio' },
       ],
     }]
   })
@@ -207,8 +208,9 @@ test('GET /api/audio retorna melhor stream de áudio', async () => {
       thumbnails: [{ url: 'thumb' }],
       formats: [
         { acodec: 'none', vcodec: 'avc1', abr: 0, url: 'video' },
-        { acodec: 'opus', vcodec: 'none', abr: 70, url: 'audio-low' },
-        { acodec: 'opus', vcodec: 'none', abr: 160, url: 'audio-high' },
+        { acodec: 'opus', ext: 'webm', vcodec: 'none', abr: 160, url: 'webm-high' },
+        { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 70, url: 'audio-low' },
+        { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 128, url: 'audio-high' },
       ],
     }]
   })
@@ -236,7 +238,7 @@ test('GET /api/audio usa cache para a mesma URL', async () => {
     return [{
       title: 'Audio cache',
       formats: [
-        { acodec: 'opus', vcodec: 'none', abr: 128, url: 'cached-audio' },
+        { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 128, url: 'cached-audio' },
       ],
     }]
   })

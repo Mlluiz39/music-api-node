@@ -175,10 +175,46 @@ function getVideoWatchUrl(video) {
   return normalizeQueryParam(video.url)
 }
 
-function findBestAudioFormat(formats = []) {
-  return formats.reduce((best, format) => {
-    if (format.acodec === 'none' || (format.vcodec && format.vcodec !== 'none')) return best
+function getUrlMimeType(url) {
+  try {
+    return decodeURIComponent(new URL(url).searchParams.get('mime') || '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
 
+function getAllowedAudioKind(format = {}) {
+  const ext = String(format.ext || format.audio_ext || '').toLowerCase()
+  const acodec = String(format.acodec || '').toLowerCase()
+  const mimeType = String(format.mimeType || format.mimetype || '').split(';')[0].trim().toLowerCase()
+  const urlMimeType = getUrlMimeType(format.url).split(';')[0].trim()
+  const mime = mimeType || urlMimeType
+
+  if (ext === 'mp3' || mime === 'audio/mpeg' || mime === 'audio/mp3') return 'mp3'
+  if (ext === 'ogg' || ext === 'oga' || mime === 'audio/ogg' || mime === 'application/ogg') return 'ogg'
+  if (
+    ext === 'aac' ||
+    ext === 'acc' ||
+    ext === 'm4a' ||
+    mime === 'audio/aac' ||
+    mime === 'audio/aacp' ||
+    mime === 'audio/mp4' ||
+    acodec.startsWith('mp4a') ||
+    acodec.includes('aac')
+  ) {
+    return 'aac'
+  }
+
+  return null
+}
+
+function findBestAudioFormat(formats = []) {
+  const allowedFormats = formats.filter(format => {
+    if (format.acodec === 'none' || (format.vcodec && format.vcodec !== 'none')) return false
+    return Boolean(getAllowedAudioKind(format))
+  })
+
+  return allowedFormats.reduce((best, format) => {
     const abr = format.abr || 0
     if (!best || abr > (best.abr || 0)) return format
 
