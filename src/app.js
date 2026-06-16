@@ -15,6 +15,7 @@ const DEFAULT_YTDLP_PATH = 'yt-dlp'
 const DEFAULT_COOKIES_PATH = '/opt/music-api/cookies.txt'
 const DEFAULT_YTDLP_TIMEOUT_MS = 45_000
 const DEFAULT_AUDIO_YTDLP_TIMEOUT_MS = 90_000  // áudio demora mais para resolver formatos
+const DEFAULT_AUDIO_FORMAT_SELECTOR = 'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]/bestaudio[ext=ogg]'
 const MAX_QUERY_LENGTH = 200
 const MAX_URL_LENGTH = 2_048
 
@@ -89,6 +90,7 @@ export function getConfig(environment = env) {
     hasCookies: existsSync(cookiesPath),
     ytdlpTimeoutMs: Number(environment.YTDLP_TIMEOUT_MS || DEFAULT_YTDLP_TIMEOUT_MS),
     audioYtdlpTimeoutMs: Number(environment.AUDIO_YTDLP_TIMEOUT_MS || DEFAULT_AUDIO_YTDLP_TIMEOUT_MS),
+    audioFormatSelector: environment.AUDIO_FORMAT_SELECTOR || DEFAULT_AUDIO_FORMAT_SELECTOR,
   }
 }
 
@@ -222,6 +224,23 @@ function findBestAudioFormat(formats = []) {
   }, null)
 }
 
+function findSelectedAudioFormat(info = {}) {
+  const selectedFormats = [
+    ...(info.requested_downloads || []),
+    ...(info.requested_formats || []),
+  ]
+
+  const selectedAudio = selectedFormats.find(format => {
+    if (!format?.url) return false
+    if (format.acodec === 'none' || (format.vcodec && format.vcodec !== 'none')) return false
+    return Boolean(getAllowedAudioKind(format))
+  })
+
+  if (selectedAudio) return selectedAudio
+  if (info.url && getAllowedAudioKind(info)) return info
+  return findBestAudioFormat(info.formats || [])
+}
+
 export function createYtDlpRunner(config = getConfig()) {
   return async function runYtDlp(args, { timeoutMs } = {}) {
     let stdout = ''
@@ -324,18 +343,15 @@ export function createApp({ config = getConfig(), runYtDlp = createYtDlpRunner(c
         return res.json(cached)
       }
 
-      // Sem -f: findBestAudioFormat faz a seleção localmente a partir do JSON completo.
-      // Isso evita que o yt-dlp precise resolver o seletor de formato no servidor,
-      // reduzindo o tempo de resposta e o risco de timeout.
       const args = addCookiesArg(
-        [url, '-j', '--no-playlist', '--no-warnings', '--socket-timeout', '30', '--retries', '2'],
+        [url, '-j', '-f', config.audioFormatSelector, '--no-playlist', '--no-warnings', '--socket-timeout', '30', '--retries', '2'],
         config,
       )
       const data = await runYtDlp(args, { timeoutMs: config.audioYtdlpTimeoutMs })
       if (data.length === 0) return res.status(404).json({ error: 'nenhum resultado' })
 
       const info = data[0]
-      const bestAudio = findBestAudioFormat(info.formats || [])
+      const bestAudio = findSelectedAudioFormat(info)
       if (!bestAudio?.url) return res.status(404).json({ error: 'nenhum formato de áudio' })
 
       const payload = {

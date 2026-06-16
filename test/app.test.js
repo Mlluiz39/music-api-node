@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp, isAllowedStreamUrl, isAllowedYouTubeUrl } from '../src/app.js'
 
+const AUDIO_FORMAT_SELECTOR = 'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]/bestaudio[ext=ogg]'
+
 function createTestServer(runYtDlp) {
   return createTestServerWithConfig(runYtDlp)
 }
@@ -15,6 +17,7 @@ function createTestServerWithConfig(runYtDlp, configOverrides = {}) {
       ytdlpPath: 'yt-dlp',
       ytdlpTimeoutMs: 30_000,
       audioYtdlpTimeoutMs: 90_000,
+      audioFormatSelector: AUDIO_FORMAT_SELECTOR,
       ...configOverrides,
     },
     runYtDlp,
@@ -156,6 +159,8 @@ test('GET /api/audio força vídeo único mesmo com URL de playlist', async () =
     assert.deepEqual(args, [
       playlistVideoUrl,
       '-j',
+      '-f',
+      AUDIO_FORMAT_SELECTOR,
       '--no-playlist',
       '--no-warnings',
       '--socket-timeout',
@@ -166,6 +171,9 @@ test('GET /api/audio força vídeo único mesmo com URL de playlist', async () =
 
     return [{
       title: 'Selecionada',
+      requested_downloads: [
+        { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 96, url: 'selected-audio' },
+      ],
       formats: [
         { acodec: 'opus', ext: 'webm', vcodec: 'none', abr: 128, url: 'webm-audio' },
         { acodec: 'mp4a.40.2', ext: 'm4a', vcodec: 'none', abr: 96, url: 'selected-audio' },
@@ -193,6 +201,8 @@ test('GET /api/audio retorna melhor stream de áudio', async () => {
     assert.deepEqual(args, [
       'https://www.youtube.com/watch?v=abc',
       '-j',
+      '-f',
+      AUDIO_FORMAT_SELECTOR,
       '--no-playlist',
       '--no-warnings',
       '--socket-timeout',
