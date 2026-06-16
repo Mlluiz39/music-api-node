@@ -5,4 +5,5 @@ const app = createApp({ config })
 
 app.listen(config.port, () => {
   console.log(`Music API rodando em http://0.0.0.0:${config.port}`)
+  console.log(`Audio format selector: ${config.audioFormatSelector}`)
 })
