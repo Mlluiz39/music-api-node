@@ -6,9 +6,13 @@ API leve para extrair áudio e informações do YouTube, feita em **Node.js**. U
 
 | Método | Rota | Parâmetro | Descrição |
 |--------|------|-----------|-----------|
+| GET | `/health` | — | Verifica se a API está no ar |
 | GET | `/api/search` | `q` | Busca vídeos no YouTube (até 20 resultados) |
 | GET | `/api/audio` | `url` | Retorna URL direta do melhor stream de áudio |
+| GET | `/api/stream` | `url` | Faz proxy do stream de áudio (suporta `Range` e `HEAD`) |
 | GET | `/api/playlist` | `url` | Lista faixas de uma playlist |
+
+> Players nativos (ExoPlayer, MediaPlayer, etc.) costumam enviar um `HEAD` em `/api/stream` antes do `GET` para checar tamanho/tipo do áudio — ambos os métodos são suportados.
 
 ## Exemplos
 
@@ -18,6 +22,9 @@ curl "http://localhost:8081/api/search?q=mc+torugo"
 
 # Pegar stream de áudio
 curl "http://localhost:8081/api/audio?url=https://www.youtube.com/watch?v=Y50HSJQuwNU"
+
+# Proxiar o stream (suporta Range/HEAD)
+curl "http://localhost:8081/api/stream?url=https://rr1---sn.googlevideo.com/videoplayback?..."
 
 # Listar playlist
 curl "http://localhost:8081/api/playlist?url=https://www.youtube.com/playlist?list=..."
@@ -144,13 +151,16 @@ sudo systemctl start music-api
 sudo systemctl status music-api
 ```
 
-### 8. Deploy automático
+### 8. Enviar o código para a VPS
 
-O script `deploy.sh` envia os fontes, instala dependências e reinicia o serviço:
+Como o script `deploy.sh` foi removido, faça o envio manual:
 
 ```bash
-# Local — edite o host no script ou passe via env
-VPS_HOST=root@seu-ip bash deploy.sh
+# Sincroniza os fontes (excluindo node_modules e .env locais)
+rsync -avz --exclude node_modules --exclude .env ./ root@seu-ip:/opt/music-api/
+
+# Na VPS, instale as dependências e reinicie o serviço
+ssh root@seu-ip 'cd /opt/music-api && npm install --omit=dev && sudo systemctl restart music-api'
 ```
 
 ### 9. Cookies do YouTube (opcional, mas recomendado)
@@ -181,6 +191,11 @@ curl "http://seu-ip:8081/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
 | `ALLOWED_ORIGINS` | `*` | Origens CORS permitidas (separadas por vírgula) |
 | `YTDLP_PATH` | `yt-dlp` | Caminho do binário yt-dlp |
 | `COOKIES_PATH` | `/opt/music-api/cookies.txt` | Caminho do arquivo de cookies |
+| `YTDLP_TIMEOUT_MS` | `45000` | Timeout do yt-dlp para busca/playlist (ms) |
+| `AUDIO_YTDLP_TIMEOUT_MS` | `90000` | Timeout do yt-dlp para resolver áudio (ms) |
+| `AUDIO_FORMAT_SELECTOR` | `bestaudio[ext=m4a]/...` | Seletor de formato do yt-dlp (`-f`) |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Janela do rate limit por IP (ms) |
+| `RATE_LIMIT_MAX` | `60` | Máximo de requisições por IP dentro da janela |
 
 ---
 
@@ -190,8 +205,9 @@ curl "http://seu-ip:8081/api/audio?url=https://www.youtube.com/watch?v=VIDEO_ID"
 music-api/
 ├── src/
 │   ├── app.js          # App Express, handlers, chamada ao yt-dlp
-│   └── server.js       # Inicialização do servidor HTTP
-├── deploy.sh           # Script de deploy: rsync → npm install → systemd restart
+│   └── server.js       # Inicialização do servidor HTTP e graceful shutdown
+├── test/
+│   └── app.test.js     # Testes (node:test)
 ├── package.json
 ├── .env                 # Variáveis de ambiente (não versionado)
 └── README.md

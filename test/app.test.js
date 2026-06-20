@@ -372,6 +372,59 @@ test('GET /api/stream bloqueia host não permitido', async () => {
   }
 })
 
+test('HEAD /api/stream valida url obrigatória', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/stream`, { method: 'HEAD' })
+    assert.equal(response.status, 400)
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8')
+  } finally {
+    await server.close()
+  }
+})
+
+test('HEAD /api/stream bloqueia host não permitido', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/stream?url=https://example.com/audio.webm`, { method: 'HEAD' })
+    assert.equal(response.status, 403)
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8')
+  } finally {
+    await server.close()
+  }
+})
+
+test('GET rota inexistente retorna 404 JSON', async () => {
+  const server = createTestServer(async () => [])
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/nope`)
+    assert.equal(response.status, 404)
+    assert.deepEqual(await response.json(), { error: 'rota não encontrada' })
+  } finally {
+    await server.close()
+  }
+})
+
+test('rate limit retorna 429 ao exceder o limite', async () => {
+  const server = createTestServerWithConfig(async () => [], { rateLimitMax: 2 })
+
+  try {
+    const first = await fetch(`${server.baseUrl}/api/search?q=a`)
+    const second = await fetch(`${server.baseUrl}/api/search?q=a`)
+    const third = await fetch(`${server.baseUrl}/api/search?q=a`)
+
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(third.status, 429)
+    assert.deepEqual(await third.json(), { error: 'muitas requisições, tente novamente mais tarde' })
+  } finally {
+    await server.close()
+  }
+})
+
 test('bloqueia origem CORS não permitida', async () => {
   const server = createTestServerWithConfig(async () => [], {
     allowedOrigins: ['https://app.example.com'],
