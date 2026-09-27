@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-export const DEFAULT_PORT = 8081
+export const DEFAULT_PORT = 8089
 const DEFAULT_YTDLP_PATH = 'yt-dlp'
 const DEFAULT_COOKIES_PATH = '/opt/music-api/cookies.txt'
 const DEFAULT_YTDLP_TIMEOUT_MS = 45_000
